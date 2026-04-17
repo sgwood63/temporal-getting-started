@@ -103,9 +103,15 @@ class ToolActivities:
 
         result = await self.agent_toolPlanner(prompt_input)
 
+        failed_reason = result.get("validationFailedReason", {})
+        if isinstance(failed_reason, str):
+            try:
+                failed_reason = json.loads(failed_reason)
+            except (json.JSONDecodeError, ValueError):
+                failed_reason = {"response": failed_reason}
         return ValidationResult(
             validationResult=result.get("validationResult", False),
-            validationFailedReason=result.get("validationFailedReason", {}),
+            validationFailedReason=failed_reason,
         )
 
     @activity.defn

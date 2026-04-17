@@ -39,7 +39,7 @@ async def startup_event():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -115,6 +115,8 @@ async def get_conversation_history():
 
         if "workflow not found" in error_message:
             await start_workflow()
+            return []
+        elif "workflow task in failed state" in error_message.lower():
             return []
         else:
             # For other Temporal errors, return a 500

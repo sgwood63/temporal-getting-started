@@ -10,7 +10,7 @@ AI application using Temporal Cloud with the [temporal-ai-agent](https://github.
 ├── temporal-ai-agent/      # Cloned AI agent application
 │   ├── .env                # Local config (not committed — fill in your keys)
 │   ├── .env.example        # Template for .env
-│   ├── main.py             # FastAPI server (port 8000)
+│   ├── api/main.py         # FastAPI server (port 8000)
 │   ├── scripts/
 │   │   └── run_worker.py   # Temporal worker
 │   └── frontend/           # Vite frontend (port 5173)
@@ -52,7 +52,7 @@ Open three terminals from the `temporal-ai-agent/` directory:
 uv run scripts/run_worker.py
 
 # Terminal 2 — API server
-uv run main.py
+uv run uvicorn api.main:app --reload
 
 # Terminal 3 — Frontend
 cd frontend && npm run dev
@@ -72,3 +72,5 @@ temporal namespace describe --namespace <your-namespace> \
 ## Dev Log
 
 See [HISTORY.md](HISTORY.md) for a running log of all changes.
+
+**Required:** After completing any task that changes files, config, or behavior, append a dated entry to HISTORY.md before considering the task done.

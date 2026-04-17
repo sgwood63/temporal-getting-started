@@ -37,12 +37,17 @@ class ValidationInput:
 @dataclass
 class ValidationResult:
     validationResult: bool
-    validationFailedReason: dict = None
+    validationFailedReason: Optional[Union[dict, str]] = None
 
     def __post_init__(self):
-        # Initialize empty dict if None
         if self.validationFailedReason is None:
             self.validationFailedReason = {}
+        elif isinstance(self.validationFailedReason, str):
+            import json as _json
+            try:
+                self.validationFailedReason = _json.loads(self.validationFailedReason)
+            except (_json.JSONDecodeError, ValueError):
+                self.validationFailedReason = {"response": self.validationFailedReason}
 
 
 @dataclass
