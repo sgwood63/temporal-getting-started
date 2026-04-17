@@ -73,4 +73,4 @@ temporal namespace describe --namespace <your-namespace> \
 
 See [HISTORY.md](HISTORY.md) for a running log of all changes.
 
-**Required:** After completing any task that changes files, config, or behavior, append a dated entry to HISTORY.md before considering the task done.
+**Required:** After completing any task that changes files, config, or behavior, append a dated entry to HISTORY.md before considering the task done. Always update HISTORY.md before committing.
