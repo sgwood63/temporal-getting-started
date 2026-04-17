@@ -113,6 +113,19 @@ export const apiService = {
         }
     },
 
+    async endChat() {
+        try {
+            const res = await fetchWithTimeout(`${API_BASE_URL}/end-chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            return handleResponse(res);
+        } catch (error) {
+            if (error instanceof ApiError) throw error;
+            throw new ApiError('Failed to end chat', error.status || 500);
+        }
+    },
+
     async confirm() {
         try {
             const res = await fetchWithTimeout(`${API_BASE_URL}/confirm`, { 

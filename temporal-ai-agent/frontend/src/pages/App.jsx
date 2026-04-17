@@ -105,17 +105,18 @@ export default function App() {
         try {
             const data = await apiService.getConversationHistory();
             const newConversation = data.messages || [];
-            
-            setConversation(prevConversation => 
+            const workflowDone = data.workflow_done === true;
+
+            setConversation(prevConversation =>
                 JSON.stringify(prevConversation) !== JSON.stringify(newConversation) ? newConversation : prevConversation
             );
-    
+
             if (newConversation.length > 0) {
                 const lastMsg = newConversation[newConversation.length - 1];
                 const isAgentMessage = lastMsg.actor === "agent";
-                
-                setLoading(!isAgentMessage);
-                setDone(lastMsg.response.next === "done");
+
+                setLoading(!isAgentMessage && !workflowDone);
+                setDone(workflowDone || lastMsg.response.next === "done");
     
                 setLastMessage(prevLastMessage =>
                     !prevLastMessage || lastMsg.response.response !== prevLastMessage.response.response
@@ -124,7 +125,7 @@ export default function App() {
                 );
             } else {
                 setLoading(false);
-                setDone(true);
+                setDone(workflowDone);
                 setLastMessage(null);
             }
     
@@ -205,6 +206,15 @@ export default function App() {
         }
     };
 
+    const handleEndChat = async () => {
+        try {
+            setError(INITIAL_ERROR_STATE);
+            await apiService.endChat();
+        } catch (err) {
+            handleError(err, "ending chat");
+        }
+    };
+
     const handleStartNewChat = async () => {
         try {
             setError(INITIAL_ERROR_STATE);
@@ -222,6 +232,19 @@ export default function App() {
     return (
         <div className="flex flex-col h-screen">
             <NavBar title="Temporal AI Agent 🤖" />
+
+            {!done && (
+                <div className="flex justify-end px-4 py-2 max-w-lg mx-auto w-full">
+                    <button
+                        onClick={handleEndChat}
+                        className="text-sm text-red-500 hover:text-red-700 dark:text-red-400
+                            dark:hover:text-red-300 underline transition-colors duration-200"
+                        aria-label="End chat"
+                    >
+                        End Chat
+                    </button>
+                </div>
+            )}
 
             {error.visible && (
                 <div className="fixed top-16 left-1/2 transform -translate-x-1/2 
@@ -286,11 +309,22 @@ export default function App() {
                     </button>
                 </form>
                 
-                <div className="text-right mt-3">
+                <div className="flex justify-between mt-3">
+                    <button
+                        onClick={handleEndChat}
+                        className={`text-sm underline text-red-500 hover:text-red-700
+                            dark:text-red-400 dark:hover:text-red-300
+                            transition-all duration-200
+                            ${done ? "opacity-0 cursor-not-allowed" : ""}`}
+                        disabled={done}
+                        aria-label="End chat"
+                    >
+                        End Chat
+                    </button>
                     <button
                         onClick={handleStartNewChat}
-                        className={`text-sm underline text-gray-600 dark:text-gray-400 
-                            hover:text-gray-800 dark:hover:text-gray-200 
+                        className={`text-sm underline text-gray-600 dark:text-gray-400
+                            hover:text-gray-800 dark:hover:text-gray-200
                             transition-all duration-200
                             ${!done ? "opacity-0 cursor-not-allowed" : ""}`}
                         disabled={!done}

@@ -39,7 +39,7 @@ async def startup_event():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -79,15 +79,22 @@ async def get_conversation_history():
     try:
         handle = temporal_client.get_workflow_handle("agent-workflow")
 
-        failed_states = [
+        inactive_states = [
             WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_TERMINATED,
             WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_CANCELED,
             WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_FAILED,
+            WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_COMPLETED,
         ]
 
         description = await handle.describe()
-        if description.status in failed_states:
-            print("Workflow is in a failed state. Returning empty history.")
+        workflow_done = description.status in inactive_states
+
+        if description.status in [
+            WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_TERMINATED,
+            WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_CANCELED,
+            WorkflowExecutionStatus.WORKFLOW_EXECUTION_STATUS_FAILED,
+        ]:
+            print("Workflow is in a failed/terminated state. Returning empty history.")
             return []
 
         # Set a timeout for the query
@@ -96,6 +103,8 @@ async def get_conversation_history():
                 handle.query("get_conversation_history"),
                 timeout=5,  # Timeout after 5 seconds
             )
+            if isinstance(conversation_history, dict):
+                conversation_history["workflow_done"] = workflow_done
             return conversation_history
         except asyncio.TimeoutError:
             raise HTTPException(

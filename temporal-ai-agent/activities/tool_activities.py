@@ -164,11 +164,17 @@ class ToolActivities:
         Parses the JSON response content and returns it as a dictionary.
         """
         try:
-            data = json.loads(response_content)
-            return data
-        except json.JSONDecodeError as e:
-            print(f"Invalid JSON: {e}")
-            raise
+            return json.loads(response_content)
+        except json.JSONDecodeError:
+            # LLM may append extra text after the JSON (e.g. persona commentary).
+            # raw_decode stops at the end of the first complete JSON value.
+            try:
+                decoder = json.JSONDecoder()
+                data, _ = decoder.raw_decode(response_content.strip())
+                return data
+            except json.JSONDecodeError as e:
+                print(f"Invalid JSON: {e}")
+                raise
 
     def sanitize_json_response(self, response_content: str) -> str:
         """

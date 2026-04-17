@@ -1,9 +1,11 @@
+import os
 from typing import List
 
 import tools.tool_registry as tool_registry
 from models.tool_definitions import AgentGoal
 
-# Turn on Silly Mode - this should be a description of the persona you'd like the bot to have and can be a single word or a phrase.
+# Turn on Silly Mode via SILLY_MODE in your .env file.
+# This should be a description of the persona you'd like the bot to have and can be a single word or a phrase.
 # Example if you want the bot to be a specific person, like Mario or Christopher Walken, or to describe a specific tone:
 # SILLY_MODE="Christopher Walken"
 # SILLY_MODE="belligerent"
@@ -11,7 +13,7 @@ from models.tool_definitions import AgentGoal
 # Example if you want it to take on a persona (include 'a'):
 # SILLY_MODE="a pirate"
 # Note - this only works with certain LLMs. Grok for sure will stay in character, while OpenAI will not.
-SILLY_MODE = "off"
+SILLY_MODE = os.getenv("SILLY_MODE", "off")
 if SILLY_MODE is not None and SILLY_MODE != "off":
     silly_prompt = "You are " + SILLY_MODE + ", stay in character at all times. "
     print("Silly mode is on: " + SILLY_MODE)

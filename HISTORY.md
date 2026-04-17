@@ -92,3 +92,45 @@
 ## 2026-04-17 — Switch to multi-agent mode
 
 **Asked:** (User updated `.env` directly) Switched `AGENT_GOAL` from `goal_event_flight_invoice` to `goal_choose_agent_type` to enable multi-agent mode and allow goals beyond Australia/NZ event search.
+
+---
+
+## 2026-04-17 — Make SILLY_MODE configurable via .env
+
+**Asked:** Move SILLY_MODE from a hardcoded value in agent_selection.py to an environment variable.
+
+**Change:** Replaced `SILLY_MODE = "off"` with `SILLY_MODE = os.getenv("SILLY_MODE", "off")`. No dotenv import needed — `shared/config.py` already calls `load_dotenv()` before this module is imported.
+
+**Files affected:**
+- `temporal-ai-agent/goals/agent_selection.py` — reads SILLY_MODE from env
+- `temporal-ai-agent/.env.example` — added SILLY_MODE comment with examples
+
+---
+
+## 2026-04-17 — Add End Chat button and fix new chat flow
+
+**Asked:** Add an End Chat button (top and bottom of UI); fix "Start New Chat" not re-enabling the chat input.
+
+**Changes:**
+- Added `endChat()` to `api.js` — POSTs to `/end-chat`
+- Added End Chat button at top of page (visible only when chat active) and bottom-left of input bar
+- Fixed `fetchConversationHistory`: empty conversation no longer forces `done=true` — respects `workflow_done` flag instead, so the input stays enabled while a new workflow is starting up
+- API `get-conversation-history`: added `COMPLETED` to inactive states and returns `workflow_done: true` in the JSON response so the frontend knows the workflow finished
+
+**Files affected:**
+- `temporal-ai-agent/frontend/src/services/api.js` — added `endChat()`
+- `temporal-ai-agent/frontend/src/pages/App.jsx` — End Chat buttons, `handleEndChat`, `done` state fix
+- `temporal-ai-agent/api/main.py` — `workflow_done` flag in conversation history response; CORS origin added for port 5175
+
+---
+
+## 2026-04-17 — Fix LLM returning duplicate JSON / worker crash loop
+
+**Asked:** UI hung after running ListAgents; worker was stuck retrying at attempt 40+.
+
+**Root cause:** With `SILLY_MODE="a pirate"`, the LLM (gpt-5.4-2026-03-05) consistently returned the JSON response body twice, separated by a newline. `json.loads()` raised `JSONDecodeError: Extra data` on every attempt, causing infinite retries.
+
+**Fix:** `parse_json_response` now falls back to `json.JSONDecoder().raw_decode()` which parses the first complete JSON object and ignores any trailing content (pirate commentary, duplicate JSON, etc.).
+
+**Files affected:**
+- `temporal-ai-agent/activities/tool_activities.py` — `parse_json_response` fallback to `raw_decode`
