@@ -31,10 +31,10 @@ Tests the main `AgentGoalWorkflow` class covering:
 
 Tests the `ToolActivities` class and `dynamic_tool_activity` function:
 
-- **LLM Integration**: Testing agent_toolPlanner with mocked LLM responses
-- **Validation Logic**: Testing agent_validatePrompt with various scenarios
-- **Environment Configuration**: Testing get_wf_env_vars with different env setups
-- **JSON Processing**: Testing response parsing and sanitization
+- **LLM Integration**: Testing `agent_toolPlanner` by mocking `get_planner_graph()` from `langgraph_agent`
+- **Validation Logic**: Testing `agent_validatePrompt` by mocking `get_validation_graph()`
+- **Structured Output Models**: Testing `ToolPlannerOutput` and `ValidationOutput` Pydantic models
+- **Environment Configuration**: Testing `get_wf_env_vars` with different env setups
 - **Dynamic Tool Execution**: Testing the dynamic activity dispatcher
 - **Integration**: End-to-end activity execution in Temporal workers
 
@@ -216,12 +216,19 @@ async def test_my_workflow(self, client, sample_agent_goal, sample_conversation_
 
 ### Mocking External Dependencies
 
-Always mock external services:
+Always mock external services. LLM calls now go through LangGraph graphs — mock `get_planner_graph` or `get_validation_graph` from `langgraph_agent`:
 
 ```python
-@patch('activities.tool_activities.completion')
-async def test_llm_integration(self, mock_completion):
-    mock_completion.return_value.choices[0].message.content = '{"test": "response"}'
+from activities.langgraph_agent import ToolPlannerOutput
+from unittest.mock import MagicMock, patch
+
+mock_graph = MagicMock()
+mock_graph.invoke.return_value = {
+    "messages": [],
+    "result": ToolPlannerOutput(response="Test", next="confirm", tool="SearchFlights", args={}),
+}
+
+with patch("activities.langgraph_agent.get_planner_graph", return_value=mock_graph):
     # Test implementation
 ```
 

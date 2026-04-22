@@ -113,7 +113,7 @@ For a complete list of supported models and providers, visit the [LiteLLM docume
 
 ## Configuring Temporal Connection
 
-By default, this application will connect to a local Temporal server (`localhost:7233`) in the default namespace, using the `agent-task-queue` task queue. You can override these settings in your `.env` file.
+By default, this application will connect to a local Temporal server (`localhost:7233`) in the default namespace, using the `langgraph-agent-task-queue` task queue. You can override these settings in your `.env` file.
 
 ### Use Temporal Cloud
 

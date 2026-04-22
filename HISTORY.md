@@ -134,3 +134,62 @@
 
 **Files affected:**
 - `temporal-ai-agent/activities/tool_activities.py` — `parse_json_response` fallback to `raw_decode`
+
+---
+
+## 2026-04-22 — Migrate agent planning logic to LangGraph (branch: langgraph-switch)
+
+**Asked:** Replace the custom LLM orchestration inside the agent with a popular framework while keeping Temporal as the workflow engine.
+
+**Decision:** Adopted [LangGraph](https://langchain-ai.github.io/langgraph/) with [langchain-litellm](https://pypi.org/project/langchain-litellm/) for the planning layer. LangGraph's `with_structured_output` replaces manual `litellm.completion()` + JSON sanitization/parsing. Temporal still controls the outer conversation loop, durability, signals, and tool execution.
+
+**Architecture:**
+- `activities/langgraph_agent.py` (new) — two single-step LangGraph `StateGraph`s:
+  - `get_planner_graph()` — uses `ChatLiteLLM.with_structured_output(ToolPlannerOutput)` to produce `{response, next, tool, args}` dicts
+  - `get_validation_graph()` — uses `ChatLiteLLM.with_structured_output(ValidationOutput)` to produce `{validationResult, validationFailedReason}`
+- Both graphs are lazily compiled singletons (safe for Temporal's determinism requirement — graphs compile once at module load, only `invoke` has side effects)
+- `agent_validatePrompt` no longer calls `agent_toolPlanner` internally; it uses its own dedicated validation graph
+- Removed `sanitize_json_response`, `parse_json_response`, and the `litellm.completion` import from `tool_activities.py`
+- Workflow (`agent_goal_workflow.py`) and all tools (`tools/`) are unchanged
+- LiteLLM multi-provider support preserved — `LLM_MODEL` env var still controls the provider
+
+**New dependencies (added to `pyproject.toml`):**
+- `langgraph>=0.2.0,<0.3`
+- `langchain-core>=0.3.0,<0.4`
+- `langchain-litellm>=0.1.0,<0.2`
+
+**Tests:** All 40 tests pass. Updated `tests/test_tool_activities.py` to mock `get_planner_graph` / `get_validation_graph` instead of `litellm.completion`. Removed tests for the deleted `sanitize_json_response` / `parse_json_response` helpers; replaced with Pydantic model tests.
+
+**Files created:**
+- `temporal-ai-agent/activities/langgraph_agent.py`
+
+**Files modified:**
+- `temporal-ai-agent/pyproject.toml` — added three new dependencies
+- `temporal-ai-agent/activities/tool_activities.py` — replaced agent planning internals
+- `temporal-ai-agent/tests/test_tool_activities.py` — updated mocks, added LangGraph tests
+- `CLAUDE.md` — updated project description and structure
+- `temporal-ai-agent/.env` — `TEMPORAL_TASK_QUEUE` updated to `langgraph-agent-task-queue`
+- `temporal-ai-agent/.env.example` — `TEMPORAL_TASK_QUEUE` example updated to match
+- `temporal-ai-agent/README.md` — added LangGraph description
+- `temporal-ai-agent/docs/architecture.md` — added LangGraph section under Activities
+- `temporal-ai-agent/docs/architecture-decisions.md` — added LangGraph decision rationale
+- `temporal-ai-agent/docs/setup.md` — updated default task queue name
+- `temporal-ai-agent/docs/testing.md` — updated test names and mocking descriptions
+- `temporal-ai-agent/tests/README.md` — updated mocking example to use LangGraph pattern
+- `temporal-ai-agent/docs/langgraph-switch.md` — implementation plan saved to docs
+
+---
+
+## 2026-04-22 — Fix `tool_choice='any'` crash with OpenAI provider prefix
+
+**Asked:** App wasn't responding to user input after LangGraph switch.
+
+**Root cause:** `langchain_core.BaseChatModel.with_structured_output()` hardcodes `tool_choice="any"` when calling `bind_tools`. `langchain-litellm` converts `"any"` → `"required"` for models in its `_OPENAI_MODELS` list — but that list only contains bare model names (e.g. `gpt-4o`), not models specified with the `openai/` provider prefix (e.g. `openai/gpt-5.4-2026-03-05`). OpenAI rejects `tool_choice="any"` with a `BadRequestError`.
+
+**Fix:** Replaced `with_structured_output()` calls with a `_structured_output()` helper that calls `bind_tools([schema], tool_choice="required")` directly and pipes through `PydanticToolsParser`. Works for any model name format.
+
+**Files affected:**
+- `temporal-ai-agent/activities/langgraph_agent.py` — added `_structured_output()` helper; replaced both `with_structured_output()` calls
+- `temporal-ai-agent/docs/architecture.md` — updated LangGraph description to reflect `bind_tools` usage
+- `temporal-ai-agent/docs/architecture-decisions.md` — documented the `with_structured_output` limitation and fix
+- `temporal-ai-agent/docs/langgraph-switch.md` — added "Why `bind_tools`" section to Actual Implementation

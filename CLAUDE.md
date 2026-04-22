@@ -2,6 +2,8 @@
 
 AI application using Temporal Cloud with the [temporal-ai-agent](https://github.com/temporal-community/temporal-ai-agent).
 
+Agent planning logic uses [LangGraph](https://langchain-ai.github.io/langgraph/) (`activities/langgraph_agent.py`) with [LiteLLM](https://docs.litellm.ai/) for multi-provider LLM support. Temporal handles workflow orchestration, durability, and state.
+
 ## Project Structure
 
 ```
@@ -11,6 +13,9 @@ AI application using Temporal Cloud with the [temporal-ai-agent](https://github.
 │   ├── .env                # Local config (not committed — fill in your keys)
 │   ├── .env.example        # Template for .env
 │   ├── api/main.py         # FastAPI server (port 8000)
+│   ├── activities/
+│   │   ├── langgraph_agent.py  # LangGraph graphs for agent planning
+│   │   └── tool_activities.py  # Temporal activities (calls LangGraph)
 │   ├── scripts/
 │   │   └── run_worker.py   # Temporal worker
 │   └── frontend/           # Vite frontend (port 5173)

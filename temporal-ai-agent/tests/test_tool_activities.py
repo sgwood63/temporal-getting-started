@@ -32,20 +32,21 @@ class TestToolActivities:
         self, sample_agent_goal, sample_conversation_history
     ):
         """Test agent_validatePrompt with a valid prompt."""
+        from activities.langgraph_agent import ValidationOutput
+
         validation_input = ValidationInput(
             prompt="I need help with the test tool",
             conversation_history=sample_conversation_history,
             agent_goal=sample_agent_goal,
         )
 
-        # Mock the agent_toolPlanner to return a valid response
-        mock_response = {"validationResult": True, "validationFailedReason": {}}
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "messages": [],
+            "result": ValidationOutput(validationResult=True, validationFailedReason=None),
+        }
 
-        with patch.object(
-            self.tool_activities, "agent_toolPlanner", new_callable=AsyncMock
-        ) as mock_planner:
-            mock_planner.return_value = mock_response
-
+        with patch("activities.langgraph_agent.get_validation_graph", return_value=mock_graph):
             activity_env = ActivityEnvironment()
             result = await activity_env.run(
                 self.tool_activities.agent_validatePrompt, validation_input
@@ -55,34 +56,32 @@ class TestToolActivities:
             assert result.validationResult is True
             assert result.validationFailedReason == {}
 
-            # Verify the mock was called with correct parameters
-            mock_planner.assert_called_once()
-
     @pytest.mark.asyncio
     async def test_agent_validatePrompt_invalid_prompt(
         self, sample_agent_goal, sample_conversation_history
     ):
         """Test agent_validatePrompt with an invalid prompt."""
+        from activities.langgraph_agent import ValidationOutput
+
         validation_input = ValidationInput(
             prompt="asdfghjkl nonsense",
             conversation_history=sample_conversation_history,
             agent_goal=sample_agent_goal,
         )
 
-        # Mock the agent_toolPlanner to return an invalid response
-        mock_response = {
-            "validationResult": False,
-            "validationFailedReason": {
-                "next": "question",
-                "response": "Your request doesn't make sense in this context",
-            },
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "messages": [],
+            "result": ValidationOutput(
+                validationResult=False,
+                validationFailedReason={
+                    "next": "question",
+                    "response": "Your request doesn't make sense in this context",
+                },
+            ),
         }
 
-        with patch.object(
-            self.tool_activities, "agent_toolPlanner", new_callable=AsyncMock
-        ) as mock_planner:
-            mock_planner.return_value = mock_response
-
+        with patch("activities.langgraph_agent.get_validation_graph", return_value=mock_graph):
             activity_env = ActivityEnvironment()
             result = await activity_env.run(
                 self.tool_activities.agent_validatePrompt, validation_input
@@ -94,23 +93,22 @@ class TestToolActivities:
 
     @pytest.mark.asyncio
     async def test_agent_toolPlanner_success(self):
-        """Test agent_toolPlanner with successful LLM response."""
+        """Test agent_toolPlanner returns structured output via LangGraph."""
+        from activities.langgraph_agent import ToolPlannerOutput
+
         prompt_input = ToolPromptInput(
             prompt="Test prompt", context_instructions="Test context instructions"
         )
 
-        # Mock the completion function
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[
-            0
-        ].message.content = (
-            '{"next": "confirm", "tool": "TestTool", "response": "Test response"}'
-        )
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "messages": [],
+            "result": ToolPlannerOutput(
+                response="Test response", next="confirm", tool="TestTool", args={}
+            ),
+        }
 
-        with patch("activities.tool_activities.completion") as mock_completion:
-            mock_completion.return_value = mock_response
-
+        with patch("activities.langgraph_agent.get_planner_graph", return_value=mock_graph):
             activity_env = ActivityEnvironment()
             result = await activity_env.run(
                 self.tool_activities.agent_toolPlanner, prompt_input
@@ -120,60 +118,45 @@ class TestToolActivities:
             assert result["next"] == "confirm"
             assert result["tool"] == "TestTool"
             assert result["response"] == "Test response"
-
-            # Verify completion was called with correct parameters
-            mock_completion.assert_called_once()
-            call_args = mock_completion.call_args[1]
-            assert call_args["model"] == self.tool_activities.llm_model
-            assert len(call_args["messages"]) == 2
-            assert call_args["messages"][0]["role"] == "system"
-            assert call_args["messages"][1]["role"] == "user"
+            mock_graph.invoke.assert_called_once()
+            call_state = mock_graph.invoke.call_args[0][0]
+            assert len(call_state["messages"]) == 2
 
     @pytest.mark.asyncio
     async def test_agent_toolPlanner_with_custom_base_url(self):
-        """Test agent_toolPlanner with custom base URL configuration."""
-        # Set up tool activities with custom base URL
-        with patch.dict(os.environ, {"LLM_BASE_URL": "https://custom.endpoint.com"}):
-            tool_activities = ToolActivities()
+        """Test agent_toolPlanner works when LLM_BASE_URL is configured."""
+        from activities.langgraph_agent import ToolPlannerOutput
 
-            prompt_input = ToolPromptInput(
-                prompt="Test prompt", context_instructions="Test context instructions"
-            )
-
-            mock_response = MagicMock()
-            mock_response.choices = [MagicMock()]
-            mock_response.choices[
-                0
-            ].message.content = '{"next": "done", "response": "Test"}'
-
-            with patch("activities.tool_activities.completion") as mock_completion:
-                mock_completion.return_value = mock_response
-
-                activity_env = ActivityEnvironment()
-                await activity_env.run(tool_activities.agent_toolPlanner, prompt_input)
-
-                # Verify base_url was included in the call
-                call_args = mock_completion.call_args[1]
-                assert "base_url" in call_args
-                assert call_args["base_url"] == "https://custom.endpoint.com"
-
-    @pytest.mark.asyncio
-    async def test_agent_toolPlanner_json_parsing_error(self):
-        """Test agent_toolPlanner handles JSON parsing errors."""
         prompt_input = ToolPromptInput(
             prompt="Test prompt", context_instructions="Test context instructions"
         )
 
-        # Mock the completion function to return invalid JSON
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Invalid JSON response"
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "messages": [],
+            "result": ToolPlannerOutput(response="Test", next="done", tool=None, args=None),
+        }
 
-        with patch("activities.tool_activities.completion") as mock_completion:
-            mock_completion.return_value = mock_response
+        with patch.dict(os.environ, {"LLM_BASE_URL": "https://custom.endpoint.com"}):
+            with patch("activities.langgraph_agent.get_planner_graph", return_value=mock_graph):
+                tool_activities = ToolActivities()
+                activity_env = ActivityEnvironment()
+                result = await activity_env.run(tool_activities.agent_toolPlanner, prompt_input)
+                assert result["next"] == "done"
 
+    @pytest.mark.asyncio
+    async def test_agent_toolPlanner_graph_error(self):
+        """Test agent_toolPlanner propagates errors from the graph."""
+        prompt_input = ToolPromptInput(
+            prompt="Test prompt", context_instructions="Test context instructions"
+        )
+
+        mock_graph = MagicMock()
+        mock_graph.invoke.side_effect = RuntimeError("LLM call failed")
+
+        with patch("activities.langgraph_agent.get_planner_graph", return_value=mock_graph):
             activity_env = ActivityEnvironment()
-            with pytest.raises(Exception):  # Should raise JSON parsing error
+            with pytest.raises(Exception):
                 await activity_env.run(
                     self.tool_activities.agent_toolPlanner, prompt_input
                 )
@@ -216,35 +199,35 @@ class TestToolActivities:
             assert result.show_confirm is False  # from env var
             assert result.multi_goal_mode is False  # from env var
 
-    def test_sanitize_json_response(self):
-        """Test JSON response sanitization."""
-        # Test with markdown code blocks
-        response_with_markdown = '```json\n{"test": "value"}\n```'
-        sanitized = self.tool_activities.sanitize_json_response(response_with_markdown)
-        assert sanitized == '{"test": "value"}'
+    def test_tool_planner_output_model(self):
+        """Test ToolPlannerOutput Pydantic model serializes correctly."""
+        from activities.langgraph_agent import ToolPlannerOutput
 
-        # Test with extra whitespace
-        response_with_whitespace = '  \n{"test": "value"}  \n'
-        sanitized = self.tool_activities.sanitize_json_response(
-            response_with_whitespace
+        output = ToolPlannerOutput(
+            response="Let's search for flights",
+            next="confirm",
+            tool="SearchFlights",
+            args={"origin": "SFO", "destination": "JFK"},
         )
-        assert sanitized == '{"test": "value"}'
+        d = output.model_dump()
+        assert d["next"] == "confirm"
+        assert d["tool"] == "SearchFlights"
+        assert d["args"]["origin"] == "SFO"
 
-    def test_parse_json_response_success(self):
-        """Test successful JSON parsing."""
-        json_string = '{"next": "confirm", "tool": "TestTool"}'
-        result = self.tool_activities.parse_json_response(json_string)
+    def test_validation_output_model(self):
+        """Test ValidationOutput Pydantic model serializes correctly."""
+        from activities.langgraph_agent import ValidationOutput
 
-        assert isinstance(result, dict)
-        assert result["next"] == "confirm"
-        assert result["tool"] == "TestTool"
+        valid = ValidationOutput(validationResult=True, validationFailedReason=None)
+        assert valid.validationResult is True
+        assert valid.validationFailedReason is None
 
-    def test_parse_json_response_failure(self):
-        """Test JSON parsing with invalid JSON."""
-        invalid_json = "Not valid JSON"
-
-        with pytest.raises(Exception):  # Should raise JSON parsing error
-            self.tool_activities.parse_json_response(invalid_json)
+        invalid = ValidationOutput(
+            validationResult=False,
+            validationFailedReason={"next": "question", "response": "Try again"},
+        )
+        assert invalid.validationResult is False
+        assert invalid.validationFailedReason["next"] == "question"
 
 
 class TestDynamicToolActivity:
@@ -335,19 +318,21 @@ class TestEdgeCases:
         self, sample_agent_goal
     ):
         """Test validation with empty conversation history."""
+        from activities.langgraph_agent import ValidationOutput
+
         validation_input = ValidationInput(
             prompt="Test prompt",
             conversation_history={"messages": []},
             agent_goal=sample_agent_goal,
         )
 
-        mock_response = {"validationResult": True, "validationFailedReason": {}}
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "messages": [],
+            "result": ValidationOutput(validationResult=True, validationFailedReason=None),
+        }
 
-        with patch.object(
-            self.tool_activities, "agent_toolPlanner", new_callable=AsyncMock
-        ) as mock_planner:
-            mock_planner.return_value = mock_response
-
+        with patch("activities.langgraph_agent.get_validation_graph", return_value=mock_graph):
             activity_env = ActivityEnvironment()
             result = await activity_env.run(
                 self.tool_activities.agent_validatePrompt, validation_input
@@ -359,20 +344,23 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     async def test_agent_toolPlanner_with_long_prompt(self):
-        """Test toolPlanner with very long prompt."""
+        """Test toolPlanner with a very long prompt."""
+        from activities.langgraph_agent import ToolPlannerOutput
+
         long_prompt = "This is a very long prompt " * 100
         tool_prompt_input = ToolPromptInput(
             prompt=long_prompt, context_instructions="Test context instructions"
         )
 
-        # Mock the completion response
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[
-            0
-        ].message.content = '{"next": "done", "response": "Processed long prompt"}'
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "messages": [],
+            "result": ToolPlannerOutput(
+                response="Processed long prompt", next="done", tool=None, args=None
+            ),
+        }
 
-        with patch("activities.tool_activities.completion", return_value=mock_response):
+        with patch("activities.langgraph_agent.get_planner_graph", return_value=mock_graph):
             activity_env = ActivityEnvironment()
             result = await activity_env.run(
                 self.tool_activities.agent_toolPlanner, tool_prompt_input
@@ -383,28 +371,55 @@ class TestEdgeCases:
             assert "Processed long prompt" in result["response"]
 
     @pytest.mark.asyncio
-    async def test_sanitize_json_with_various_formats(self):
-        """Test JSON sanitization with various input formats."""
-        # Test markdown code blocks
-        markdown_json = '```json\n{"test": "value"}\n```'
-        result = self.tool_activities.sanitize_json_response(markdown_json)
-        assert result == '{"test": "value"}'
+    async def test_agent_toolPlanner_done_response(self):
+        """Test toolPlanner returns done correctly."""
+        from activities.langgraph_agent import ToolPlannerOutput
 
-        # Test with extra whitespace
-        whitespace_json = '   \n  {"test": "value"}  \n  '
-        result = self.tool_activities.sanitize_json_response(whitespace_json)
-        assert result == '{"test": "value"}'
+        prompt_input = ToolPromptInput(
+            prompt="All done", context_instructions="context"
+        )
 
-        # Test already clean JSON
-        clean_json = '{"test": "value"}'
-        result = self.tool_activities.sanitize_json_response(clean_json)
-        assert result == '{"test": "value"}'
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "messages": [],
+            "result": ToolPlannerOutput(response="Goal complete", next="done", tool=None, args=None),
+        }
+
+        with patch("activities.langgraph_agent.get_planner_graph", return_value=mock_graph):
+            activity_env = ActivityEnvironment()
+            result = await activity_env.run(
+                self.tool_activities.agent_toolPlanner, prompt_input
+            )
+            assert result["next"] == "done"
+            assert result["tool"] is None
 
     @pytest.mark.asyncio
-    async def test_parse_json_response_with_invalid_json(self):
-        """Test JSON parsing with invalid JSON."""
-        with pytest.raises(json.JSONDecodeError):
-            self.tool_activities.parse_json_response("Invalid JSON {test: value")
+    async def test_agent_toolPlanner_question_response(self):
+        """Test toolPlanner returns question when more info is needed."""
+        from activities.langgraph_agent import ToolPlannerOutput
+
+        prompt_input = ToolPromptInput(
+            prompt="Help me", context_instructions="context"
+        )
+
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "messages": [],
+            "result": ToolPlannerOutput(
+                response="What city do you want to fly from?",
+                next="question",
+                tool=None,
+                args=None,
+            ),
+        }
+
+        with patch("activities.langgraph_agent.get_planner_graph", return_value=mock_graph):
+            activity_env = ActivityEnvironment()
+            result = await activity_env.run(
+                self.tool_activities.agent_toolPlanner, prompt_input
+            )
+            assert result["next"] == "question"
+            assert "city" in result["response"]
 
     @pytest.mark.asyncio
     async def test_get_wf_env_vars_with_various_env_values(self):

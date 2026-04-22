@@ -6,6 +6,8 @@ The agent operates in single-agent mode by default, focusing on one specific goa
 
 Goals are organized in the `/goals/` directory by category (finance, HR, travel, ecommerce, etc.) and can leverage both native and MCP tools.
 
+Agent planning logic runs through [LangGraph](https://langchain-ai.github.io/langgraph/) — the agent's "what do I do next?" decisions are modeled as a single-step LangGraph `StateGraph` using structured output, replacing hand-rolled JSON parsing. Temporal still controls the outer loop, durability, and tool execution. See `activities/langgraph_agent.py`.
+
 The AI will respond with clarifications and ask for any missing information to that goal. You can configure it to use any LLM supported by [LiteLLM](https://docs.litellm.ai/docs/providers), including:
 - OpenAI models (GPT-4, GPT-3.5)
 - Anthropic Claude models

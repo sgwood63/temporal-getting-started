@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import json
 import os
@@ -6,7 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
 
 from dotenv import load_dotenv
-from litellm import completion
+from langchain_core.messages import HumanMessage, SystemMessage
 from temporalio import activity
 from temporalio.common import RawValue
 from temporalio.exceptions import ApplicationError
@@ -36,14 +37,12 @@ load_dotenv(override=True)
 
 class ToolActivities:
     def __init__(self, mcp_client_manager: MCPClientManager = None):
-        """Initialize LLM client using LiteLLM and optional MCP client manager"""
-        self.llm_model = os.environ.get("LLM_MODEL", "openai/gpt-4")
-        self.llm_key = os.environ.get("LLM_KEY")
-        self.llm_base_url = os.environ.get("LLM_BASE_URL")
+        """Initialize activity class with optional MCP client manager. LLM config is read from env."""
         self.mcp_client_manager = mcp_client_manager
-        print(f"Initializing ToolActivities with LLM model: {self.llm_model}")
-        if self.llm_base_url:
-            print(f"Using custom base URL: {self.llm_base_url}")
+        llm_model = os.environ.get("LLM_MODEL", "openai/gpt-4")
+        print(f"Initializing ToolActivities with LLM model: {llm_model}")
+        if os.environ.get("LLM_BASE_URL"):
+            print(f"Using custom base URL: {os.environ.get('LLM_BASE_URL')}")
         if self.mcp_client_manager:
             print("MCP client manager enabled for connection pooling")
 
@@ -53,9 +52,10 @@ class ToolActivities:
     ) -> ValidationResult:
         """
         Validates the prompt in the context of the conversation history and agent goal.
-        Returns a ValidationResult indicating if the prompt makes sense given the context.
+        Uses a LangGraph graph with structured output to avoid manual JSON parsing.
         """
-        # Create simple context string describing tools and goals
+        from activities.langgraph_agent import ValidationOutput, get_validation_graph
+
         tools_description = []
         for tool in validation_input.agent_goal.tools:
             tool_str = f"Tool: {tool.name}\n"
@@ -66,127 +66,69 @@ class ToolActivities:
             tools_description.append(tool_str)
         tools_str = "\n".join(tools_description)
 
-        # Convert conversation history to string
-        history_str = json.dumps(validation_input.conversation_history, indent=2)
-
-        # Create context instructions
-        context_instructions = f"""The agent goal and tools are as follows:
-            Description: {validation_input.agent_goal.description}
-            Available Tools:
-            {tools_str}
-            The conversation history to date is:
-            {history_str}"""
-
-        # Create validation prompt
-        validation_prompt = f"""The user's prompt is: "{validation_input.prompt}"
-            Please validate if this prompt makes sense given the agent goal and conversation history.
-            If the prompt makes sense toward the goal then validationResult should be true.
-            If the prompt is wildly nonsensical or makes no sense toward the goal and current conversation history then validationResult should be false.
-            If the response is low content such as "yes" or "that's right" then the user is probably responding to a previous prompt.  
-             Therefore examine it in the context of the conversation history to determine if it makes sense and return true if it makes sense.
-            Return ONLY a JSON object with the following structure:
-                "validationResult": true/false,
-                "validationFailedReason": "If validationResult is false, provide a clear explanation to the user in the response field 
-                about why their request doesn't make sense in the context and what information they should provide instead.
-                validationFailedReason should contain JSON in the format
-                {{
-                    "next": "question",
-                    "response": "[your reason here and a response to get the user back on track with the agent goal]"
-                }}
-                If validationResult is true (the prompt makes sense), return an empty dict as its value {{}}"
-            """
-
-        # Call the LLM with the validation prompt
-        prompt_input = ToolPromptInput(
-            prompt=validation_prompt, context_instructions=context_instructions
+        context_instructions = (
+            f"The agent goal and tools are as follows:\n"
+            f"Description: {validation_input.agent_goal.description}\n"
+            f"Available Tools:\n{tools_str}\n"
+            f"The conversation history to date is:\n"
+            f"{json.dumps(validation_input.conversation_history, indent=2)}"
         )
 
-        result = await self.agent_toolPlanner(prompt_input)
+        validation_prompt = (
+            f'The user\'s prompt is: "{validation_input.prompt}"\n'
+            "Please validate if this prompt makes sense given the agent goal and conversation history.\n"
+            "Set validationResult to true if the prompt makes sense toward the goal.\n"
+            "Set validationResult to false if the prompt is nonsensical or off-topic.\n"
+            'Short responses like "yes" or "that\'s right" are likely on-topic — evaluate in context.\n'
+            "If validationResult is false, set validationFailedReason to "
+            '{"next": "question", "response": "<explanation and how to get back on track>"}. '
+            "If validationResult is true, set validationFailedReason to null."
+        )
 
-        failed_reason = result.get("validationFailedReason", {})
-        if isinstance(failed_reason, str):
-            try:
-                failed_reason = json.loads(failed_reason)
-            except (json.JSONDecodeError, ValueError):
-                failed_reason = {"response": failed_reason}
+        graph = get_validation_graph()
+        state = await asyncio.to_thread(
+            graph.invoke,
+            {
+                "messages": [
+                    SystemMessage(content=context_instructions),
+                    HumanMessage(content=validation_prompt),
+                ],
+                "result": None,
+            },
+        )
+        output: ValidationOutput = state["result"]
         return ValidationResult(
-            validationResult=result.get("validationResult", False),
-            validationFailedReason=failed_reason,
+            validationResult=output.validationResult,
+            validationFailedReason=output.validationFailedReason or {},
         )
 
     @activity.defn
     async def agent_toolPlanner(self, input: ToolPromptInput) -> dict:
-        messages = [
+        """
+        Plans the next agent action using a LangGraph graph with structured output.
+        Returns a dict with keys: response, next, tool, args.
+        """
+        from activities.langgraph_agent import ToolPlannerOutput, get_planner_graph
+
+        graph = get_planner_graph()
+        system_content = (
+            input.context_instructions
+            + ". The current date is "
+            + datetime.now().strftime("%B %d, %Y")
+        )
+        state = await asyncio.to_thread(
+            graph.invoke,
             {
-                "role": "system",
-                "content": input.context_instructions
-                + ". The current date is "
-                + datetime.now().strftime("%B %d, %Y"),
+                "messages": [
+                    SystemMessage(content=system_content),
+                    HumanMessage(content=input.prompt),
+                ],
+                "result": None,
             },
-            {
-                "role": "user",
-                "content": input.prompt,
-            },
-        ]
-
-        try:
-            completion_kwargs = {
-                "model": self.llm_model,
-                "messages": messages,
-                "api_key": self.llm_key,
-            }
-
-            # Add base_url if configured
-            if self.llm_base_url:
-                completion_kwargs["base_url"] = self.llm_base_url
-
-            response = completion(**completion_kwargs)
-
-            response_content = response.choices[0].message.content
-            activity.logger.info(f"Raw LLM response: {repr(response_content)}")
-            activity.logger.info(f"LLM response content: {response_content}")
-            activity.logger.info(f"LLM response type: {type(response_content)}")
-            activity.logger.info(
-                f"LLM response length: {len(response_content) if response_content else 'None'}"
-            )
-
-            # Use the new sanitize function
-            response_content = self.sanitize_json_response(response_content)
-            activity.logger.info(f"Sanitized response: {repr(response_content)}")
-
-            return self.parse_json_response(response_content)
-        except Exception as e:
-            print(f"Error in LLM completion: {str(e)}")
-            raise
-
-    def parse_json_response(self, response_content: str) -> dict:
-        """
-        Parses the JSON response content and returns it as a dictionary.
-        """
-        try:
-            return json.loads(response_content)
-        except json.JSONDecodeError:
-            # LLM may append extra text after the JSON (e.g. persona commentary).
-            # raw_decode stops at the end of the first complete JSON value.
-            try:
-                decoder = json.JSONDecoder()
-                data, _ = decoder.raw_decode(response_content.strip())
-                return data
-            except json.JSONDecodeError as e:
-                print(f"Invalid JSON: {e}")
-                raise
-
-    def sanitize_json_response(self, response_content: str) -> str:
-        """
-        Sanitizes the response content to ensure it's valid JSON.
-        """
-        # Remove any markdown code block markers
-        response_content = response_content.replace("```json", "").replace("```", "")
-
-        # Remove any leading/trailing whitespace
-        response_content = response_content.strip()
-
-        return response_content
+        )
+        output: ToolPlannerOutput = state["result"]
+        activity.logger.info(f"LangGraph planner output: {output}")
+        return output.model_dump()
 
     @activity.defn
     async def get_wf_env_vars(self, input: EnvLookupInput) -> EnvLookupOutput:

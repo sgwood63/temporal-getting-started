@@ -5,6 +5,15 @@ This documents some of the "why" behind the [architecture](./architecture.md).
 We wanted to have flexibility to use different models, because this space is changing rapidly and models get better regularly.
 Also, for you, we wanted to let you pick your model of choice. The system is designed to make changing models out simple. For how to do that, checkout the [setup guide](./setup.md).
 
+## LangGraph for Agent Planning
+The original implementation called LiteLLM directly and parsed the LLM's output by sanitizing and decoding a manually specified JSON schema (`{next, tool, args, response}`). This was fragile — LLMs occasionally returned markdown fences, duplicate JSON, or extra commentary that broke parsing.
+
+We replaced the two planning activities (`agent_toolPlanner`, `agent_validatePrompt`) with [LangGraph](https://langchain-ai.github.io/langgraph/) `StateGraph`s. Each graph calls `ChatLiteLLM.bind_tools([schema], tool_choice="required")` and parses the result with `PydanticToolsParser`, producing a guaranteed-valid Pydantic model before the result ever reaches the workflow.
+
+`with_structured_output()` was the original target API but it hardcodes `tool_choice="any"` internally, which the OpenAI API rejects (it only accepts `"none"`, `"auto"`, or `"required"`). The `langchain-litellm` library converts `"any"` → `"required"` for known OpenAI model names, but the conversion is bypassed for models specified with the `openai/` provider prefix (e.g. `openai/gpt-5.4-2026-03-05`). Using `bind_tools` directly with `tool_choice="required"` avoids this ambiguity entirely and works regardless of how the model name is specified.
+
+LangGraph was chosen because it is the most widely adopted Python agent framework (part of the LangChain ecosystem), integrates cleanly with LiteLLM via `langchain-litellm`, and supports structured output across all major providers. The single-step graph pattern keeps Temporal fully in control of the outer loop while LangGraph handles one planning call per activity invocation.
+
 ## Temporal
 We asked one of the AI models used in this demo to answer this question (edited minorly):
 

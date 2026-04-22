@@ -23,9 +23,9 @@ This guide provides instructions for running the comprehensive test suite for th
 
 ### Unit Tests
 - **Activity Tests**: `tests/test_tool_activities.py`
-  - LLM integration (mocked)
+  - LLM integration (mocked via `get_planner_graph` / `get_validation_graph`)
   - Environment configuration
-  - JSON processing
+  - Structured output models (`ToolPlannerOutput`, `ValidationOutput`)
   - Dynamic tool execution
 
 ### Integration Tests  
@@ -45,7 +45,7 @@ uv run pytest tests/test_tool_activities.py -v
 uv run pytest tests/test_agent_goal_workflow.py -v
 
 # Run a specific test
-uv run pytest tests/test_tool_activities.py::TestToolActivities::test_sanitize_json_response -v
+uv run pytest tests/test_tool_activities.py::TestToolActivities::test_agent_toolPlanner_success -v
 
 # Run tests matching a pattern
 uv run pytest -k "validation" -v
@@ -89,9 +89,9 @@ The test suite covers:
 
 ✅ **Activities**  
 - ToolActivities class methods
-- LLM integration (mocked)
+- LLM integration (mocked via LangGraph graph)
 - Environment variable handling
-- JSON response processing
+- Structured output model validation
 - Dynamic tool activity execution
 
 ✅ **Integration**
@@ -110,8 +110,8 @@ configfile: pyproject.toml
 plugins: anyio-4.5.2, asyncio-0.26.0
 collected 21 items
 
-tests/test_tool_activities.py::TestToolActivities::test_sanitize_json_response PASSED
-tests/test_tool_activities.py::TestToolActivities::test_parse_json_response_success PASSED
+tests/test_tool_activities.py::TestToolActivities::test_agent_toolPlanner_success PASSED
+tests/test_tool_activities.py::TestToolActivities::test_tool_planner_output_model PASSED
 tests/test_tool_activities.py::TestToolActivities::test_get_wf_env_vars_default_values PASSED
 ...
 

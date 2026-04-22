@@ -17,7 +17,10 @@ Temporal is used to make the process scalable, durable, reliable, secure, and vi
 - Input, LLM and Tool interaction history stored for debugging and analysis
 
 ## Activities
-These are [Temporal Activities](https://docs.temporal.io/activities). Defined as simple functions, they are auto-retried async/event driven behind the scenes. Activities durably execute Tools and the LLM. See [a sample activity](./activities/tool_activities.py).
+These are [Temporal Activities](https://docs.temporal.io/activities). Defined as simple functions, they are auto-retried async/event driven behind the scenes. Activities durably execute Tools and the LLM. See [tool_activities.py](./activities/tool_activities.py).
+
+### LangGraph for Agent Planning
+The two LLM-calling activities (`agent_toolPlanner` and `agent_validatePrompt`) use [LangGraph](https://langchain-ai.github.io/langgraph/) internally. Each activity invokes a single-step `StateGraph` that calls `ChatLiteLLM.bind_tools([schema], tool_choice="required")` and parses the result with `PydanticToolsParser` — this replaces hand-written JSON prompting and parsing with Pydantic-validated structured output. The graphs are defined in [`activities/langgraph_agent.py`](./activities/langgraph_agent.py) and compiled once at module load (satisfying Temporal's determinism requirement). Temporal still drives the outer loop; LangGraph handles exactly one planning step per activity call.
 
 ## Tools 
 Tools define the capabilities of the system. They are simple Python functions (could be in any language as Temporal supports multiple languages).
