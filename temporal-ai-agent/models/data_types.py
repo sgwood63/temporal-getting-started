@@ -25,6 +25,7 @@ NextStep = Literal["confirm", "question", "pick-new-goal", "done"]
 class ToolPromptInput:
     prompt: str
     context_instructions: str
+    conversation_history: Optional[ConversationHistory] = None
 
 
 @dataclass

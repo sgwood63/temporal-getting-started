@@ -6,7 +6,7 @@ The agent operates in single-agent mode by default, focusing on one specific goa
 
 Goals are organized in the `/goals/` directory by category (finance, HR, travel, ecommerce, etc.) and can leverage both native and MCP tools.
 
-Agent planning logic runs through [LangGraph](https://langchain-ai.github.io/langgraph/) — the agent's "what do I do next?" decisions are modeled as a single-step LangGraph `StateGraph` using structured output, replacing hand-rolled JSON parsing. Temporal still controls the outer loop, durability, and tool execution. See `activities/langgraph_agent.py`.
+Agent planning logic runs through [LangGraph](https://langchain-ai.github.io/langgraph/) — the agent's "what do I do next?" decisions are modeled as a single-step LangGraph `StateGraph` using `bind_tools` + `PydanticToolsParser` for validated structured output, replacing hand-rolled JSON parsing. Temporal still controls the outer loop, durability, and tool execution. Conversation history is passed to the LLM as proper `HumanMessage`/`AIMessage` objects (not a JSON blob in the system prompt), handled by `prompts/history_converter.py`. See `activities/langgraph_agent.py`.
 
 The AI will respond with clarifications and ask for any missing information to that goal. You can configure it to use any LLM supported by [LiteLLM](https://docs.litellm.ai/docs/providers), including:
 - OpenAI models (GPT-4, GPT-3.5)
@@ -47,11 +47,49 @@ This agent acts as an **MCP (Model Context Protocol) client**, enabling seamless
 - Set `AGENT_GOAL=goal_food_ordering` with `SHOW_CONFIRM=False` in `.env` for an example of a goal that calls MCP Tools (Stripe).
 
 ## Setup and Configuration
-See [the Setup guide](docs/setup.md) for detailed instructions. The basic configuration requires just two environment variables:
+
+### Prerequisites
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) — `brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Node.js (for the frontend)
+- A Temporal server: [Temporal Cloud](https://temporal.io/get-cloud) or a local dev server (`brew install temporal && temporal server start-dev`)
+
+### 1. Configure environment
 ```bash
-LLM_MODEL=openai/gpt-4o  # or any other model supported by LiteLLM
-LLM_KEY=your-api-key-here
+cp .env.example .env
 ```
+Edit `.env` with at minimum:
+```bash
+LLM_MODEL=openai/gpt-4o        # any model supported by LiteLLM
+LLM_KEY=your-api-key-here
+
+# For Temporal Cloud (leave commented to use local dev server):
+# TEMPORAL_ADDRESS=your-namespace.acct.tmprl.cloud:7233
+# TEMPORAL_NAMESPACE=your-namespace
+# TEMPORAL_API_KEY=your-api-key
+```
+
+### 2. Install dependencies
+```bash
+uv sync               # Python backend
+cd frontend && npm install && cd ..
+```
+
+### 3. Run (three terminals from the `temporal-ai-agent/` directory)
+```bash
+# Terminal 1 — Worker
+uv run scripts/run_worker.py
+
+# Terminal 2 — API server
+uv run uvicorn api.main:app --reload
+
+# Terminal 3 — Frontend
+cd frontend && npm run dev
+```
+
+Open **http://localhost:5173** in your browser.
+
+> **Makefile shortcut:** `make setup` then `make run-worker`, `make run-api`, `make run-frontend` in separate terminals. See [setup.md](docs/setup.md) for Docker, Temporal Cloud, and goal-specific configuration.
 
 ## Customizing Interaction & Tools
 See [the guide to adding goals and tools](docs/adding-goals-and-tools.md).
@@ -88,7 +126,7 @@ uv run pytest --workflow-environment=time-skipping
 
 To contribute to this project, see [contributing.md](docs/contributing.md).
 
-Start the Temporal Server and API server, see [setup](docs/setup.md)
+For detailed setup options (Docker, Temporal Cloud, Makefile, goal-specific config), see [setup.md](docs/setup.md).
 
 ## Productionalization & Adding Features
 - In a prod setting, I would need to ensure that payload data is stored separately (e.g. in S3 or a noSQL db - the claim-check pattern), or otherwise 'garbage collected'. Without these techniques, long conversations will fill up the workflow's conversation history, and start to breach Temporal event history payload limits.

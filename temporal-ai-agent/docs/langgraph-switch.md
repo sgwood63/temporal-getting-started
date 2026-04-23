@@ -166,6 +166,8 @@ The plan originally proposed using `bind_tools` with sentinel tools (`DoneSignal
 
 4. **No changes to workflow or data models** — The `ToolPromptInput` dataclass and `agent_goal_workflow.py` required zero modifications since the dict contract is identical.
 
+> **Update (2026-04-23):** This point was later revised. See [Conversation History as LangChain Messages](#conversation-history-as-langchain-messages) below.
+
 ### Why `bind_tools` instead of `with_structured_output`
 
 `with_structured_output()` was the initial implementation but caused a runtime error:
@@ -185,3 +187,34 @@ def _structured_output(llm: ChatLiteLLM, schema: Type[T]):
     parser = PydanticToolsParser(tools=[schema], first_tool_only=True)
     return bound | parser
 ```
+
+---
+
+## Conversation History as LangChain Messages
+
+Previously the full `ConversationHistory` was JSON-serialized and embedded as raw text inside the `SystemMessage`. This caused the LLM to parse a JSON blob rather than receive structured conversation context.
+
+The activities now convert Temporal's dict-based history to proper LangChain message objects before invoking the graph:
+
+```
+[SystemMessage(instructions_only), *history_messages, HumanMessage(current_prompt)]
+```
+
+The actor → message type mapping:
+
+| Actor | LangChain type |
+|---|---|
+| `"user"` | `HumanMessage` |
+| `"agent"` | `AIMessage` (text extracted from dict if response has a `"response"` key) |
+| `"tool_result"` | `HumanMessage` prefixed `[Tool result]` |
+| `"user_confirmed_tool_run"` | `HumanMessage` prefixed `[Confirmed tool run]` |
+| `"conversation_summary"` | Injected into system prompt via `conversation_summary` param, not a history message |
+
+Conversion lives in `prompts/history_converter.py`. Temporal's `ConversationHistory` dict format is **unchanged** — the conversion is purely in the activity layer.
+
+**Files changed:**
+- `prompts/history_converter.py` — new `convert_history_to_messages()` utility
+- `models/data_types.py` — `ToolPromptInput` gained optional `conversation_history` field
+- `prompts/agent_prompt_generators.py` — history JSON block removed; `conversation_summary` param added
+- `activities/tool_activities.py` — both activities expand history into the messages list
+- `workflows/agent_goal_workflow.py` — passes `conversation_history` and `conversation_summary` through to activities

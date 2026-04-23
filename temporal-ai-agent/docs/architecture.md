@@ -22,6 +22,8 @@ These are [Temporal Activities](https://docs.temporal.io/activities). Defined as
 ### LangGraph for Agent Planning
 The two LLM-calling activities (`agent_toolPlanner` and `agent_validatePrompt`) use [LangGraph](https://langchain-ai.github.io/langgraph/) internally. Each activity invokes a single-step `StateGraph` that calls `ChatLiteLLM.bind_tools([schema], tool_choice="required")` and parses the result with `PydanticToolsParser` — this replaces hand-written JSON prompting and parsing with Pydantic-validated structured output. The graphs are defined in [`activities/langgraph_agent.py`](./activities/langgraph_agent.py) and compiled once at module load (satisfying Temporal's determinism requirement). Temporal still drives the outer loop; LangGraph handles exactly one planning step per activity call.
 
+Each activity constructs the LLM message list as `[SystemMessage(instructions), *history_messages, HumanMessage(prompt)]`. The conversation history from Temporal's workflow state is converted to proper `HumanMessage`/`AIMessage` objects by `prompts/history_converter.py` rather than being JSON-serialized into the system prompt. This keeps the system prompt focused on instructions and lets the LLM consume history in its native multi-turn format.
+
 ## Tools 
 Tools define the capabilities of the system. They are simple Python functions (could be in any language as Temporal supports multiple languages).
 They are executed by Temporal Activities. They are “just code” - can connect to any API or system. They also are where the deterministic business logic is: you can validate and retry actions using code you write.

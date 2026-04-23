@@ -193,3 +193,51 @@
 - `temporal-ai-agent/docs/architecture.md` — updated LangGraph description to reflect `bind_tools` usage
 - `temporal-ai-agent/docs/architecture-decisions.md` — documented the `with_structured_output` limitation and fix
 - `temporal-ai-agent/docs/langgraph-switch.md` — added "Why `bind_tools`" section to Actual Implementation
+
+---
+
+## 2026-04-23 — Pass conversation history as LangChain message objects
+
+**Asked:** Instead of JSON-dumping conversation history into the SystemMessage, convert it to proper LangChain `HumanMessage`/`AIMessage` objects and pass them in the messages list, keeping the system prompt for instructions only.
+
+**Decisions:**
+- Temporal's `ConversationHistory` dict format is unchanged (persisted in workflow state, returned to UI).
+- Conversion happens in the activity layer via a new utility `prompts/history_converter.py`.
+- Actor mapping: `"user"` → `HumanMessage`, `"agent"` → `AIMessage` (text extracted from dict if applicable), `"tool_result"` → `HumanMessage` prefixed `[Tool result]`, `"user_confirmed_tool_run"` → `HumanMessage` prefixed `[Confirmed tool run]`, `"conversation_summary"` → extracted as plain text for injection into the system prompt.
+- `generate_genai_prompt` no longer takes `conversation_history`; instead accepts optional `conversation_summary` to embed prior-session context in the system prompt.
+- `ToolPromptInput` gains an optional `conversation_history` field so the planner activity can access it.
+- Both `agent_toolPlanner` and `agent_validatePrompt` now build: `[SystemMessage] + history_messages + [HumanMessage(prompt)]`.
+- 21/21 tests pass.
+
+**Files affected:**
+- `temporal-ai-agent/prompts/history_converter.py` — new file; `convert_history_to_messages()` utility
+- `temporal-ai-agent/models/data_types.py` — added `conversation_history: Optional[ConversationHistory]` to `ToolPromptInput`
+- `temporal-ai-agent/prompts/agent_prompt_generators.py` — removed history JSON embedding; added `conversation_summary` param
+- `temporal-ai-agent/activities/tool_activities.py` — both activities use `convert_history_to_messages` and expand into graph messages list
+- `temporal-ai-agent/workflows/agent_goal_workflow.py` — updated `generate_genai_prompt` call and `ToolPromptInput` construction
+- `temporal-ai-agent/tests/test_tool_activities.py` — added `test_agent_toolPlanner_injects_history_messages`
+
+---
+
+## 2026-04-23 — Update documentation for multi-turn message format change
+
+**Asked:** Update docs to reflect the conversation history → LangChain messages change.
+
+**Files affected:**
+- `temporal-ai-agent/docs/langgraph-switch.md` — added "Conversation History as LangChain Messages" section; annotated the outdated "no changes to data models" claim
+- `temporal-ai-agent/docs/architecture.md` — extended LangGraph section with message list structure
+- `temporal-ai-agent/docs/architecture-decisions.md` — added "Conversation History as LangChain Message Objects" decision entry
+
+---
+
+## 2026-04-23 — Update temporal-ai-agent README with current setup and run docs
+
+**Asked:** Update the ai-agent level README with current setup and run documentation.
+
+**Changes:**
+- Updated LangGraph description to mention `bind_tools` + `PydanticToolsParser` and the multi-turn history message format
+- Replaced sparse "Setup and Configuration" section with a proper quick-start: prerequisites, `.env` config, `uv sync`, and the three run commands (worker / API / frontend)
+- Replaced stale "Development" section link text
+
+**Files affected:**
+- `temporal-ai-agent/README.md`

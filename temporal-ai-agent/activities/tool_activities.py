@@ -55,6 +55,7 @@ class ToolActivities:
         Uses a LangGraph graph with structured output to avoid manual JSON parsing.
         """
         from activities.langgraph_agent import ValidationOutput, get_validation_graph
+        from prompts.history_converter import convert_history_to_messages
 
         tools_description = []
         for tool in validation_input.agent_goal.tools:
@@ -70,9 +71,9 @@ class ToolActivities:
             f"The agent goal and tools are as follows:\n"
             f"Description: {validation_input.agent_goal.description}\n"
             f"Available Tools:\n{tools_str}\n"
-            f"The conversation history to date is:\n"
-            f"{json.dumps(validation_input.conversation_history, indent=2)}"
         )
+
+        history_messages, _ = convert_history_to_messages(validation_input.conversation_history)
 
         validation_prompt = (
             f'The user\'s prompt is: "{validation_input.prompt}"\n'
@@ -91,6 +92,7 @@ class ToolActivities:
             {
                 "messages": [
                     SystemMessage(content=context_instructions),
+                    *history_messages,
                     HumanMessage(content=validation_prompt),
                 ],
                 "result": None,
@@ -109,6 +111,7 @@ class ToolActivities:
         Returns a dict with keys: response, next, tool, args.
         """
         from activities.langgraph_agent import ToolPlannerOutput, get_planner_graph
+        from prompts.history_converter import convert_history_to_messages
 
         graph = get_planner_graph()
         system_content = (
@@ -116,11 +119,15 @@ class ToolActivities:
             + ". The current date is "
             + datetime.now().strftime("%B %d, %Y")
         )
+        history_messages, _ = convert_history_to_messages(
+            input.conversation_history or {"messages": []}
+        )
         state = await asyncio.to_thread(
             graph.invoke,
             {
                 "messages": [
                     SystemMessage(content=system_content),
+                    *history_messages,
                     HumanMessage(content=input.prompt),
                 ],
                 "result": None,

@@ -343,6 +343,37 @@ class TestEdgeCases:
             assert result.validationFailedReason == {}
 
     @pytest.mark.asyncio
+    async def test_agent_toolPlanner_injects_history_messages(self, sample_conversation_history):
+        """Test that conversation_history is converted and injected into the LLM messages list."""
+        from activities.langgraph_agent import ToolPlannerOutput
+
+        prompt_input = ToolPromptInput(
+            prompt="Next step",
+            context_instructions="Test context",
+            conversation_history=sample_conversation_history,
+        )
+
+        mock_graph = MagicMock()
+        mock_graph.invoke.return_value = {
+            "messages": [],
+            "result": ToolPlannerOutput(response="ok", next="done", tool=None, args=None),
+        }
+
+        with patch("activities.langgraph_agent.get_planner_graph", return_value=mock_graph):
+            activity_env = ActivityEnvironment()
+            await activity_env.run(self.tool_activities.agent_toolPlanner, prompt_input)
+
+            call_state = mock_graph.invoke.call_args[0][0]
+            # sample_conversation_history has 2 messages (user + agent)
+            # so total = 1 SystemMessage + 2 history + 1 HumanMessage = 4
+            assert len(call_state["messages"]) == 4
+            from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+            assert isinstance(call_state["messages"][0], SystemMessage)
+            assert isinstance(call_state["messages"][1], HumanMessage)  # "user" actor
+            assert isinstance(call_state["messages"][2], AIMessage)     # "agent" actor
+            assert isinstance(call_state["messages"][3], HumanMessage)  # current prompt
+
+    @pytest.mark.asyncio
     async def test_agent_toolPlanner_with_long_prompt(self):
         """Test toolPlanner with a very long prompt."""
         from activities.langgraph_agent import ToolPlannerOutput

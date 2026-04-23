@@ -8,10 +8,10 @@ MULTI_GOAL_MODE: bool = None
 
 def generate_genai_prompt(
     agent_goal: AgentGoal,
-    conversation_history: str,
     multi_goal_mode: bool,
     raw_json: Optional[str] = None,
     mcp_tools_info: Optional[dict] = None,
+    conversation_summary: Optional[str] = None,
 ) -> str:
     """
     Generates a concise prompt for producing or validating JSON instructions
@@ -27,17 +27,10 @@ def generate_genai_prompt(
         "DO NOT include any text before or after the JSON. Your entire response must be parseable JSON."
     )
 
-    # Main Conversation History
-    prompt_lines.append("=== Conversation History ===")
-    prompt_lines.append(
-        "This is the ongoing history to determine which tool and arguments to gather:"
-    )
-    prompt_lines.append("*BEGIN CONVERSATION HISTORY*")
-    prompt_lines.append(json.dumps(conversation_history, indent=2))
-    prompt_lines.append("*END CONVERSATION HISTORY*")
-    prompt_lines.append(
-        "REMINDER: You can use the conversation history to infer arguments for the tools."
-    )
+    # Prior conversation summary (only present after continue-as-new)
+    if conversation_summary:
+        prompt_lines.append("=== Prior Conversation Summary ===")
+        prompt_lines.append(conversation_summary)
 
     # Example Conversation History (from agent_goal)
     if agent_goal.example_conversation_history:

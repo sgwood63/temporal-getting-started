@@ -14,6 +14,18 @@ We replaced the two planning activities (`agent_toolPlanner`, `agent_validatePro
 
 LangGraph was chosen because it is the most widely adopted Python agent framework (part of the LangChain ecosystem), integrates cleanly with LiteLLM via `langchain-litellm`, and supports structured output across all major providers. The single-step graph pattern keeps Temporal fully in control of the outer loop while LangGraph handles one planning call per activity invocation.
 
+## Conversation History as LangChain Message Objects
+
+The initial LangGraph implementation embedded the full `ConversationHistory` as a JSON blob inside the `SystemMessage` on every LLM call. This worked, but required the LLM to parse a raw JSON string — an unnatural format that consumed tokens describing structure rather than content.
+
+We changed both planning activities to convert Temporal's dict-based history to proper LangChain message objects (`HumanMessage`, `AIMessage`) before invoking the graph. The LLM now receives history in the multi-turn format it was trained on:
+
+```
+[SystemMessage(instructions), HumanMessage(...), AIMessage(...), ..., HumanMessage(current_prompt)]
+```
+
+Temporal's `ConversationHistory` format is **unchanged** — conversion is an activity-layer concern handled by `prompts/history_converter.py`. The `"agent"` actor maps to `AIMessage` with the response text extracted from the dict. `"tool_result"` and `"user_confirmed_tool_run"` map to prefixed `HumanMessage` objects since proper `ToolMessage` requires a `tool_call_id` that isn't tracked in Temporal's history. `"conversation_summary"` entries (written on `continue_as_new`) are pulled out of the message list and injected into the system prompt instead, since they are meta-context rather than conversational turns.
+
 ## Temporal
 We asked one of the AI models used in this demo to answer this question (edited minorly):
 
