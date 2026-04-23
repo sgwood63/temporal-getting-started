@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from temporalio.api.enums.v1 import WorkflowExecutionStatus
 from temporalio.client import Client
+from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import TemporalError
 
 from goals import goal_list
@@ -222,6 +223,7 @@ async def start_workflow():
         combined_input,
         id=workflow_id,
         task_queue=TEMPORAL_TASK_QUEUE,
+        id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         start_signal="user_prompt",
         start_signal_args=["### " + initial_agent_goal.starter_prompt],
     )

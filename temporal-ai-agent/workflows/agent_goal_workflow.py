@@ -185,7 +185,7 @@ class AgentGoalWorkflow:
 
                 # make sure we're ready to run the tool & have everything we need
                 if next_step == "confirm" and current_tool:
-                    args = tool_data.get("args", {})
+                    args = tool_data.get("args") or {}
                     # if we're missing arguments, ask for them
                     if await helpers.handle_missing_args(
                         current_tool, args, tool_data, self.prompt_queue

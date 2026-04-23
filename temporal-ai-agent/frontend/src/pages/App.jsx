@@ -222,6 +222,7 @@ export default function App() {
             await apiService.startWorkflow();
             setConversation([]);
             setLastMessage(null);
+            setDone(false);
         } catch (err) {
             handleError(err, "starting new chat");
         } finally {

@@ -241,3 +241,19 @@
 
 **Files affected:**
 - `temporal-ai-agent/README.md`
+
+---
+
+## 2026-04-23 — Fix "Start New Chat" broken after workflow completes
+
+**Asked:** App not working after starting a new chat.
+
+**Root cause:** `/start-workflow` used the default Temporal `WorkflowIDReusePolicy` (`ALLOW_DUPLICATE_FAILED_ONLY`), which rejects starting a new workflow with the same ID (`"agent-workflow"`) when the previous run completed successfully. The error was silently swallowed by `handleStartNewChat`, leaving the app stuck in the `done=true` state.
+
+**Fixes:**
+- `api/main.py`: Added `WorkflowIDReusePolicy.ALLOW_DUPLICATE` to the `/start-workflow` `start_workflow` call; imported `WorkflowIDReusePolicy` from `temporalio.common`.
+- `frontend/src/pages/App.jsx`: Added `setDone(false)` in `handleStartNewChat` so the input unlocks immediately after the workflow starts rather than waiting for the next poll cycle.
+
+**Files modified:**
+- `temporal-ai-agent/api/main.py`
+- `temporal-ai-agent/frontend/src/pages/App.jsx`
