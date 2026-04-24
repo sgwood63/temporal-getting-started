@@ -87,6 +87,22 @@ def get_planner_graph():
     return _PLANNER_GRAPH
 
 
+def get_langfuse_callbacks(session_id: Optional[str] = None) -> list:
+    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
+    if not public_key or not secret_key:
+        return []
+    from langfuse.callback import CallbackHandler
+
+    kwargs: Dict[str, Any] = {"public_key": public_key, "secret_key": secret_key}
+    if session_id:
+        kwargs["session_id"] = session_id
+    host = os.environ.get("LANGFUSE_HOST")
+    if host:
+        kwargs["host"] = host
+    return [CallbackHandler(**kwargs)]
+
+
 def get_validation_graph():
     global _VALIDATION_GRAPH
     if _VALIDATION_GRAPH is None:

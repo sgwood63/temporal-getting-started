@@ -69,6 +69,18 @@ LLM_KEY=your-api-key-here
 # TEMPORAL_API_KEY=your-api-key
 ```
 
+#### Langfuse LLM observability (optional)
+
+[Langfuse](https://langfuse.com) traces every LLM call (planner + validator), grouping them by conversation via the Temporal workflow ID as the session. To enable, add to `.env`:
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=https://cloud.langfuse.com   # or http://localhost:3000 for self-hosted
+```
+
+If these variables are not set the app runs normally with no tracing. See [`../langfuse/`](../langfuse/) for a Docker Compose setup to run Langfuse locally.
+
 ### 2. Install dependencies
 ```bash
 uv sync               # Python backend

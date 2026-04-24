@@ -256,4 +256,39 @@
 
 **Files modified:**
 - `temporal-ai-agent/api/main.py`
+
+---
+
+## 2026-04-24 — Langfuse LLM observability integration
+
+**Asked:** Integrate Langfuse to allow observability into LLM calls.
+
+**Approach:** Added opt-in Langfuse tracing via LangChain's callback system. A new helper `get_langfuse_callbacks(session_id)` in `langgraph_agent.py` returns a `langfuse.callback.CallbackHandler` if `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set; otherwise returns an empty list so the app behaves exactly as before. The Temporal `workflow_id` is passed as the Langfuse `session_id`, grouping all LLM calls in a conversation under one session.
+
+**Files modified:**
+- `temporal-ai-agent/pyproject.toml` — added `langfuse>=2.0.0,<3` dependency
+- `temporal-ai-agent/.env.example` — added commented Langfuse env var section
+- `temporal-ai-agent/activities/langgraph_agent.py` — added `get_langfuse_callbacks()` helper
+- `temporal-ai-agent/activities/tool_activities.py` — passed callbacks to both `agent_validatePrompt` and `agent_toolPlanner` graph invocations
 - `temporal-ai-agent/frontend/src/pages/App.jsx`
+
+---
+
+## 2026-04-24 — Langfuse local Docker deployment
+
+**Asked:** Add a `langfuse/` directory with a Docker Compose config for running Langfuse locally.
+
+**Setup:** Uses the official `langfuse/langfuse:2` image (matching the `langfuse<3` Python dependency) with a `postgres:16-alpine` database. Secrets (`NEXTAUTH_SECRET`, `SALT`, `POSTGRES_PASSWORD`) are read from a `langfuse/.env` file (git-ignored via existing `.env` pattern).
+
+**To start:**
+```bash
+cp langfuse/.env.example langfuse/.env
+# Fill in NEXTAUTH_SECRET, SALT (openssl rand -base64 32), and POSTGRES_PASSWORD
+docker compose -f langfuse/docker-compose.yml up -d
+```
+UI available at http://localhost:3000.
+
+**Files added:**
+- `langfuse/docker-compose.yml`
+- `langfuse/.env.example`
+- `langfuse/README.md`

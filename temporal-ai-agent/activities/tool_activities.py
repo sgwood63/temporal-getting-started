@@ -54,7 +54,7 @@ class ToolActivities:
         Validates the prompt in the context of the conversation history and agent goal.
         Uses a LangGraph graph with structured output to avoid manual JSON parsing.
         """
-        from activities.langgraph_agent import ValidationOutput, get_validation_graph
+        from activities.langgraph_agent import ValidationOutput, get_langfuse_callbacks, get_validation_graph
         from prompts.history_converter import convert_history_to_messages
 
         tools_description = []
@@ -87,6 +87,8 @@ class ToolActivities:
         )
 
         graph = get_validation_graph()
+        workflow_id = activity.info().workflow_id
+        callbacks = get_langfuse_callbacks(session_id=workflow_id)
         state = await asyncio.to_thread(
             graph.invoke,
             {
@@ -97,6 +99,7 @@ class ToolActivities:
                 ],
                 "result": None,
             },
+            {"callbacks": callbacks} if callbacks else None,
         )
         output: ValidationOutput = state["result"]
         return ValidationResult(
@@ -110,10 +113,12 @@ class ToolActivities:
         Plans the next agent action using a LangGraph graph with structured output.
         Returns a dict with keys: response, next, tool, args.
         """
-        from activities.langgraph_agent import ToolPlannerOutput, get_planner_graph
+        from activities.langgraph_agent import ToolPlannerOutput, get_langfuse_callbacks, get_planner_graph
         from prompts.history_converter import convert_history_to_messages
 
         graph = get_planner_graph()
+        workflow_id = activity.info().workflow_id
+        callbacks = get_langfuse_callbacks(session_id=workflow_id)
         system_content = (
             input.context_instructions
             + ". The current date is "
@@ -132,6 +137,7 @@ class ToolActivities:
                 ],
                 "result": None,
             },
+            {"callbacks": callbacks} if callbacks else None,
         )
         output: ToolPlannerOutput = state["result"]
         activity.logger.info(f"LangGraph planner output: {output}")
